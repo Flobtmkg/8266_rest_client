@@ -1,7 +1,7 @@
 /*
   Florian Couturier
 
-  Complete project details at 
+  Complete project details at https://github.com/Flobtmkg/8266_rest_client
 
   Based on the work of Rui Santos (details at  https://RandomNerdTutorials.com/esp8266-nodemcu-http-get-post-arduino/)
   
