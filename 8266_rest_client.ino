@@ -16,12 +16,13 @@
 #include <ESP8266HTTPClient.h>
 #include <WiFiClient.h>
 #include <Arduino_JSON.h>
+#include <WiFiClientSecureBearSSL.h>
 
 //                                            ------------------------------
 //                                            |global technical consts block|
 //                                            ------------------------------
 
-static const bool debugMode = false;
+static const bool debugMode = true;
 
 const static char START_MESSAGE_BLOCK = '\31';                          // ASCII char to trigger the start of an inter-chip message
 const static char STOP_MESSAGE_BLOCK = '\23';                           // ASCII char to trigger the end of an inter-chip message
@@ -39,6 +40,7 @@ PROGMEM static const char MSG_ENUM_DATA[] = "DATA";
 PROGMEM static const char JSON_DEVICE[] = "deviceId";
 PROGMEM static const char REQ_CONTENT_KEY[] = "Content-Type";
 PROGMEM static const char REQ_CONTENT_VALUE[] = "application/json";
+PROGMEM static const char FINGERPRINT[] = "net_fingerprint";
 
 // Inter-chip commands enumeration
 PROGMEM static const char CMD_HTTPGET[] = "HTTPGET";
@@ -73,10 +75,13 @@ struct HTTPResponse {
 
 String connexionSSID = "";                                              // wifi network name 
 String connexionPSWRD = "";                                             // wifi password
+String tlsFingerprint = "";                                             // TLS Cert Fingerprint
 
-String debugApiPath = "http://192.168.0.13:8080/api/v1/datapoints";
+//String debugApiPath = "http://192.168.0.13:8080/api/v1/datapoints";
+String debugApiPath = "https://httpbin.org/get";
+
 unsigned long debugLastTime = 0;
-static const unsigned long debugTimerDelay = 5000;
+static const unsigned long debugTimerDelay = 60000;
 
 String messageBuffer = "";                                              // Inter-chip message String buffer
 bool isReading = false;                                                 // to flag a "currently reading" state from serial
@@ -93,12 +98,15 @@ void setup() {
   
   // start serial
   Serial.begin(115200);
-  // wifi init
-  initWifiConnection();
  
   if(debugMode == true){
-    Serial.println(F("debug mode enabled, the wifi module will perform a test request every 5 seconds."));
+    Serial.println(F("debug mode enabled, the wifi module will perform a test request every 60 seconds."));
+    connexionSSID="xxxx";
+    connexionPSWRD="xxxxx";
   }
+
+  // wifi init
+  initWifiConnection();
 
 }
 
@@ -118,10 +126,11 @@ void debugLoop() {
   if(WiFi.status()== WL_CONNECTED){
       
     JSONVar myData;
-    myData[String(FPSTR(JSON_DEVICE))] = String(FPSTR(DEVICE_ID)).c_str();
-    myData["ledMilis"] = millis() - debugLastTime;
-      
-    HTTPResponse httpResponse = httpPOSTRequest(debugApiPath, "", "", &myData);
+    tlsFingerprint = "226EACE3C99C47AFD453CECCA4ECF0A2E530D762";
+    HTTPResponse httpResponse = httpsGETRequest(debugApiPath, true, "", "", &myData, false);
+
+    Serial.println("payload :");
+    Serial.println(httpResponse.payload);
 
   } else {
       Serial.println(F("WiFi Disconnected"));
@@ -194,7 +203,7 @@ void commandManagement(JSONVar commandMessage){
   // command execution
   if(strcmp(cmd, String(FPSTR(CMD_HTTPGET)).c_str()) == 0){
     if(WiFi.status() == WL_CONNECTED){
-      httpResponse = httpGETRequest(entrypoint, login, password, &data);
+      httpResponse = httpGETRequest(entrypoint, login, password, &data, true);
     } else {
       httpResponse.responseCode = -2;
       httpResponse.payload = (char*)String(FPSTR(JSON_DEFAULT)).c_str();
@@ -207,16 +216,27 @@ void commandManagement(JSONVar commandMessage){
       httpResponse.payload = (char*)String(FPSTR(JSON_DEFAULT)).c_str();
     }
   } else if(strcmp(cmd, String(FPSTR(CMD_HTTPSGET)).c_str()) == 0){
-    // not implemented yet!
+    if(WiFi.status() == WL_CONNECTED){
+      if(tlsFingerprint.length() == 20){
+        httpResponse = httpsGETRequest(entrypoint, true, login, password, &data, true);
+      } else{
+        httpResponse = httpsGETRequest(entrypoint, false, login, password, &data, true); //  Insecure mode, no cert verification if tlsFingerprint is not set 
+      }
+    } else {
+      httpResponse.responseCode = -2;
+      httpResponse.payload = (char*)String(FPSTR(JSON_DEFAULT)).c_str();
+    }
   } else if(strcmp(cmd, String(FPSTR(CMD_HTTPSPOST)).c_str()) == 0){
     // not implemented yet!
   } else if(strcmp(cmd, String(FPSTR(CMD_NTWKCHANG)).c_str()) == 0){
 
+    
+    tlsFingerprint = String(data[String(FPSTR(FINGERPRINT))]);
     connexionSSID = login;
     connexionPSWRD = password;
     initWifiConnection();
 
-    httpResponse.responseCode = 0;// code 0 si ok -2 sinon (not connected)
+    httpResponse.responseCode = 0;  // code 0 si ok -2 sinon (not connected) timeout logic to implement here...
     httpResponse.payload = (char*)String(FPSTR(JSON_DEFAULT)).c_str();
   } else {
     httpResponse.responseCode = -3;
@@ -239,15 +259,17 @@ void commandManagement(JSONVar commandMessage){
 
 
 // Send http GET to an address
-HTTPResponse httpGETRequest(String contactPath, const char* authLogin, const char* authPassword, JSONVar* objectToSend) {
+HTTPResponse httpGETRequest(String contactPath, const char* authLogin, const char* authPassword, JSONVar* objectToSend, bool mustSendID) {
   
   WiFiClient client;
   HTTPClient http;
 
   // add DEVICE_ID
-  (*objectToSend)[String(FPSTR(JSON_DEVICE))] = String(FPSTR(DEVICE_ID)).c_str();
+  if(mustSendID){
+    (*objectToSend)[String(FPSTR(JSON_DEVICE))] = String(FPSTR(DEVICE_ID)).c_str();
+  }
 
-  if(JSON.typeof(objectToSend) != String(FPSTR(UNDEFINED))){
+  if(JSON.typeof(*objectToSend) != String(FPSTR(UNDEFINED))){
     // JSON Object transform to parameter string for GET
     String params = "?";
     for (int i = 0; i < (*objectToSend).keys().length(); i++) {
@@ -264,7 +286,6 @@ HTTPResponse httpGETRequest(String contactPath, const char* authLogin, const cha
   http.begin(client, contactPath.c_str());
 
   // authentication
-  
   if(String(authLogin).length() > 0){
     http.setAuthorization(authLogin, authPassword);
   }
@@ -276,6 +297,68 @@ HTTPResponse httpGETRequest(String contactPath, const char* authLogin, const cha
 
   if (httpResponseCode >= 200 && httpResponseCode < 300) {
     payload = http.getString();
+  } else if (httpResponseCode < 0) {
+    Serial.println(F("Connection to the server has failed."));
+  }
+
+  // Free resources
+  http.end();
+
+  HTTPResponse getResponse;
+  getResponse.responseCode = httpResponseCode;
+  getResponse.payload = (char*) payload.c_str();
+
+  return getResponse;
+}
+
+
+// Send http GET to an address
+HTTPResponse httpsGETRequest(String contactPath, bool isSecure, const char* authLogin, const char* authPassword, JSONVar* objectToSend, bool mustSendID) {
+  
+  WiFiClientSecure client;
+  HTTPClient http;
+
+  // add DEVICE_ID
+  if(mustSendID){
+    (*objectToSend)[String(FPSTR(JSON_DEVICE))] = String(FPSTR(DEVICE_ID)).c_str();
+  }
+
+  if(!isSecure){
+    client.setInsecure();
+  } else {
+    client.setFingerprint(tlsFingerprint.c_str());
+  }
+
+  if(JSON.typeof(*objectToSend) != String(FPSTR(UNDEFINED))){
+    // JSON Object transform to parameter string for GET
+    String params = "?";
+    for (int i = 0; i < (*objectToSend).keys().length(); i++) {
+      String key = (*objectToSend).keys()[i];
+      String value = (String)(*objectToSend)[key];
+      params = params + key + "=" + value;
+    }
+
+    // add params to contactPath
+    contactPath = contactPath + params;
+  }
+  
+  // init the request
+  http.begin(client, contactPath.c_str());
+
+  // authentication
+  if(String(authLogin).length() > 0){
+    http.setAuthorization(authLogin, authPassword);
+  }
+
+  // Send HTTP GET request
+  int httpResponseCode = http.GET();
+
+  String payload = String(FPSTR(JSON_DEFAULT)); 
+
+  if (httpResponseCode >= 200 && httpResponseCode < 300) {
+    payload = http.getString();
+  } else if (httpResponseCode < 0) {
+    Serial.println(F("Connection to the server has failed."));
   }
 
   // Free resources
@@ -322,6 +405,8 @@ HTTPResponse httpPOSTRequest(String contactPath, const char* authLogin, const ch
 
   if (httpResponseCode >= 200 && httpResponseCode < 300) {
     payload = http.getString();
+  } else if (httpResponseCode < 0) {
+    Serial.println(F("Connection to the server has failed."));
   }
   // Free resources
   http.end();

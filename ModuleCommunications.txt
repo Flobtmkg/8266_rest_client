@@ -1,0 +1,96 @@
+INTER-MODULE COMMUNICATION PROTOCOL
+-----------------------------------
+
+We have a Buisiness module that manage sensors and build data. The business module has to transmit that data to a chip with WIFI antenna to send it to a server wich can store it.
+We have a WIFI module that manage HTTP requests. The WIFI module recieve messages from the business module and act as an HTTP client, it connects to a server and transmit data using REST standards.
+We have a server that exposes REST API's that can be contacted.
+
+
++-----------------+                        Message  +--------------------+             HTTP request  +--------+
+| Business module | <====[Inter-chip protocol]====> | WIFI module client | <====[REST standard]====> | Server |
++-----------------+  Response                       +--------------------+  HTTP response            +--------+
+       ||
+       ||    +--------+
+       ++==> | Sensor |
+             +--------+
+
+
+=> As we want to be able to continuously check sensors values while transmiting data to a server without interuptions, transmission and reception of messages between the business module and the wifi module has to be virtually asychronous
+=> Messages are transmited using serial communication.
+-----------------------------------------------
+
+To control the WIFI module behaviour, the Business module has to send commands that will be recognized by the WIFI module, then specific piece of code can be executed.
+To manage various type of communication and orders, requests and responses, we need a template that is universal enough.
+
+The inter-chip serial communication payload is an inline JSON String with some metadatas and the actual data. It looks like this :
+
+{
+ "CMD": xxx,		--> Type of command to send [string]
+ "CMD_SEQ": xxx,	--> Sequence number for this CMD request [unsigned long] 
+ "CODE": xxx,		--> Exchange code (0 if it is a request and != 0 if it is a response) [int]
+ "ENDPOINT": xxx,	--> CMD request target (for HTTP request commands it is the full URL with protocol and port) [string]
+ "LOGIN": xxx,		--> Login field that can be used for various applications [string]
+ "PASSWORD": xxx,	--> Password field that can be used for various applications [string]
+ "DATA":		    --> JSON data with custom key/value props
+	{
+	PROP1: xxx,
+	PROP2: xxx,
+	...
+	}
+}
+
+-----------------------------------------------
+
+=> All messages starts with ASCII 31(unit separator) character and ends with ASCII 23(end of transmission block) character.
+As the 8266 ESP-01S WIFI module only have one hardware serial, we need to differenciate log messages from actual inter-chip communication attempts. Those message separators are therefore necessary. 
+
+
+Already implemented [CMD] in ths project :
+
+	"CMD": "HTTPGET"   => HTTP GET request command
+	"CMD": "HTTPPOST"  => HTTP POST request command
+	"CMD": "HTTPSGET"  => HTTP GET request command over TLS (can be secured checking the SHA-1 fingerprint hash of the server certificate)
+	"CMD": "HTTPSPOST" => HTTP POST request command over TLS (can be secured checking the SHA-1 fingerprint hash of the server certificate)
+	"CMD": "NTWKCHANG" => Command to change the network connection of the WIFI module from the business module
+	
+
+Already implemented [CODE] in ths project :
+
+	"CODE": 0    => This is a request
+	"CODE": -2   => Response flag of technical error inside the wifi module
+	"CODE": -3   => Response flag of Unknown command
+	"CODE": 200  => Compatible with HTTP codes (-1, 100 - 599) are reserved.
+	
+-----------------------------------------------
+
+valid example 1 :
+
+{
+ "CMD": "NTWKCHANG",
+ "CMD_SEQ": 0,
+ "CODE": "0",
+ "ENDPOINT": "",
+ "LOGIN": "networkName",
+ "PASSWORD": "Axfru85Kje524P",
+ "DATA":
+	{
+	}
+}
+
+
+valid example 2 :
+
+{
+ "CMD": "HTTPPOST",
+ "CMD_SEQ": 26,
+ "CODE": "0",
+ "ENDPOINT": "/datapoint",
+ "LOGIN": "",
+ "PASSWORD": "",
+ "DATA":
+	{
+	"datapoint":"7352"
+	}
+}
+
+
