@@ -22,7 +22,7 @@
 //                                            |global technical consts block|
 //                                            ------------------------------
 
-static const bool debugMode = true;
+static const bool debugMode = false;
 
 const static char START_MESSAGE_BLOCK = '\31';                          // ASCII char to trigger the start of an inter-chip message
 const static char STOP_MESSAGE_BLOCK = '\23';                           // ASCII char to trigger the end of an inter-chip message
@@ -40,7 +40,7 @@ PROGMEM static const char MSG_ENUM_DATA[] = "DATA";
 PROGMEM static const char JSON_DEVICE[] = "deviceId";
 PROGMEM static const char REQ_CONTENT_KEY[] = "Content-Type";
 PROGMEM static const char REQ_CONTENT_VALUE[] = "application/json";
-PROGMEM static const char FINGERPRINT[] = "net_fingerprint";
+PROGMEM static const char FINGERPRINT[] = "net_sha1";
 
 // Inter-chip commands enumeration
 PROGMEM static const char CMD_HTTPGET[] = "HTTPGET";
@@ -101,8 +101,8 @@ void setup() {
  
   if(debugMode == true){
     Serial.println(F("debug mode enabled, the wifi module will perform a test request every 60 seconds."));
-    connexionSSID="xxxx";
-    connexionPSWRD="xxxxx";
+    connexionSSID="xxxx";                                               // Hardcode here your wifi SSID for testing
+    connexionPSWRD="xxxxx";                                             // Hardcode here your wifi password for testing
   }
 
   // wifi init
@@ -126,7 +126,7 @@ void debugLoop() {
   if(WiFi.status()== WL_CONNECTED){
       
     JSONVar myData;
-    tlsFingerprint = "226EACE3C99C47AFD453CECCA4ECF0A2E530D762";
+    tlsFingerprint = "226EACE3C99C47AFD453CECCA4ECF0A2E530D762";        // SHA-1 Cert fingerprint of https://httpbin.org for testing
     HTTPResponse httpResponse = httpsGETRequest(debugApiPath, true, "", "", &myData, false);
 
     Serial.println("payload :");
@@ -172,7 +172,7 @@ void checkForArduinoCommandMessages(){
       JSONVar commandRequest = JSON.parse(messageBuffer);
       
       // If we have the commandRequest
-      if(JSON.typeof(commandRequest) != String(FPSTR(UNDEFINED)) && ((unsigned long)commandRequest[String(FPSTR(MSG_ENUM_CODE))]) == 0){
+      if(JSON.typeof(commandRequest) != String(FPSTR(UNDEFINED)) && ((int)commandRequest[String(FPSTR(MSG_ENUM_CODE))]) == 0){
         commandManagement(commandRequest);
       }
       // Free the buffer
@@ -189,7 +189,7 @@ void commandManagement(JSONVar commandMessage){
 
   const char* cmd = (const char*) commandMessage[String(FPSTR(MSG_ENUM_CMD))];
   unsigned long cmd_seq = (unsigned long) commandMessage[String(FPSTR(MSG_ENUM_CMD_SEQ))];
-  const char* code = (const char*) commandMessage[String(FPSTR(MSG_ENUM_CODE))];
+  int code = (int) commandMessage[String(FPSTR(MSG_ENUM_CODE))];
   String entrypoint = (String) commandMessage[String(FPSTR(MSG_ENUM_ENDPOINT))];
   const char* login = (const char*) commandMessage[String(FPSTR(MSG_ENUM_LOGIN))];
   const char* password = (const char*) commandMessage[String(FPSTR(MSG_ENUM_PASSWORD))];
@@ -236,7 +236,7 @@ void commandManagement(JSONVar commandMessage){
     connexionPSWRD = password;
     initWifiConnection();
 
-    httpResponse.responseCode = 0;  // code 0 si ok -2 sinon (not connected) timeout logic to implement here...
+    httpResponse.responseCode = 1;  // code 1 if ok else -2 (not connected) timeout logic to implement here...
     httpResponse.payload = (char*)String(FPSTR(JSON_DEFAULT)).c_str();
   } else {
     httpResponse.responseCode = -3;
@@ -247,7 +247,7 @@ void commandManagement(JSONVar commandMessage){
   JSONVar responseMessage;
   responseMessage[String(FPSTR(MSG_ENUM_CMD))] = cmd;
   responseMessage[String(FPSTR(MSG_ENUM_CMD_SEQ))] = cmd_seq;
-  responseMessage[String(FPSTR(MSG_ENUM_CODE))] = String(httpResponse.responseCode);      
+  responseMessage[String(FPSTR(MSG_ENUM_CODE))] = httpResponse.responseCode;      
   responseMessage[String(FPSTR(MSG_ENUM_ENDPOINT))] = "";
   responseMessage[String(FPSTR(MSG_ENUM_LOGIN))] = login;
   responseMessage[String(FPSTR(MSG_ENUM_PASSWORD))] = "";

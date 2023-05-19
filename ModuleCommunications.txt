@@ -51,7 +51,7 @@ I propose a serial communication payload in the form of an inline JSON String wi
  "ENDPOINT": xxx,	--> [string] CMD request target (for HTTP request commands it is the full URL with protocol and port) 
  "LOGIN": xxx,		--> [string] Login field that can be used for various purposes
  "PASSWORD": xxx,	--> [string] Password field that can be used for various purposes 
- "DATA":            --> JSON data with custom key/value props
+ "DATA":                --> JSON data with custom key/value props
 	{
 	PROP1: xxx,
 	PROP2: xxx,
