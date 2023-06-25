@@ -27,7 +27,7 @@ Let's assume a basic usecase :
            --------------
 
 An ESP 8266-01S WIFI module has been used in this exemple.
-This module has to be powered with 3.3 volts and communicates using 3.3 volts as the "HIGH" value. If it can tolerate up to 5 volts as serial input (RX pin) it will only send 3.3 volts digital signal as serial output (TX pin).
+This module has to be powered with 3.3 volts and communicates using 3.3 volts as the "HIGH" value. Even if it can tolerate up to 5 volts as serial input (RX pin) it will only send 3.3 volts digital signal as serial output (TX pin).
 If you try to communicate directly with a 5 volt based board, received bits form the 8266 will be randomly corrupted. You will need a logic level converter to make it work.
 I have personaly used an Arduino Zero, which is a 3.3 volt based board with the ESP 8266-01S, so no conversion was required.
 
@@ -76,9 +76,9 @@ Already implemented [CMD] in ths project :
 Already implemented [CODE] in ths project :
 
 	"CODE": 0    => This is a request
-	"CODE": -2   => Response flag of technical error inside the wifi module
-	"CODE": -3   => Response flag of Unknown command
-	"CODE": 200  => Compatible with HTTP codes (-1, 100 - 599) are reserved.
+	"CODE": -12   => Response flag of technical error inside the wifi module
+	"CODE": -13   => Response flag of Unknown command
+	"CODE": 200  => Compatible with HTTP codes (-11 => -1, 100 => 599) are reserved.
 	
 -----------------------------------------------
 
