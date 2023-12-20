@@ -74,10 +74,10 @@ struct CommandResponse {
 //                                            |Internal program variables|
 //                                            ---------------------------
 
-String connexionSSID = "";                                              // wifi network name 
-String connexionPSWRD = "";                                             // wifi password
+String connectionSSID = "";                                             // wifi network name 
+String connectionPSWRD = "";                                            // wifi password
 String tlsFingerprint = "";                                             // TLS Cert Fingerprint
-unsigned long timeoutBase = 60000;                                      // Timeout reference value (full value for wifi init connection; 1:10 of the value for HTTP request timeout)
+unsigned long timeoutBase = 60000;                                      // Timeout reference value (full value for wifi init connection; 1:5 of the value for HTTP request timeout)
 
 //PROGMEM static const char DEBUG_API_PATH[] = "http://192.168.0.13:8080/api/v1/datapoints";
 PROGMEM static const char DEBUG_API_PATH[] = "https://httpbin.org/get";
@@ -102,12 +102,13 @@ void setup() {
   Serial.begin(115200);
   if(debugMode == true){
     Serial.println(F("debug mode enabled, the wifi module will perform a test request every 60 seconds."));
-    connexionSSID="xxxx";                                               // Hardcode here your wifi SSID for testing
-    connexionPSWRD="xxxxx";                                             // Hardcode here your wifi password for testing
+    connectionSSID="xxxx";                                              // Hardcode here your wifi SSID for testing
+    connectionPSWRD="xxxxx";                                            // Hardcode here your wifi password for testing
+  } else {
+    Serial.println(F("Initialisation standard mode."));
   }
   // wifi init
   initWifiConnection();
-
 }
 
 
@@ -142,18 +143,23 @@ CommandResponse initWifiConnection(){
   // wifi init
   CommandResponse wifiResponse;
   unsigned long initStartMillis = millis();
-  if(connexionSSID.length() > 0){
-    WiFi.begin(connexionSSID, connexionPSWRD);
+  if(connectionSSID.length() > 0){
+    unsigned long targetTimeout = initStartMillis + timeoutBase;
+    WiFi.begin(connectionSSID, connectionPSWRD);
     Serial.println(F("Connecting to wifi "));
-    Serial.print(connexionSSID);
+    Serial.print(connectionSSID);
+    Serial.println();
+    Serial.println(F("Trying to connect with timeout "));
+    Serial.print(timeoutBase);
+    Serial.print(F(" milliseconds."));
     Serial.println();
     while(WiFi.status() != WL_CONNECTED) {
-      if((millis() - initStartMillis) > timeoutBase){
-        Serial.println(F("WiFi connexion timeout."));
+      if(millis() > targetTimeout){
+        Serial.println(F("WiFi connection timeout."));
         WiFi.disconnect();
         wifiResponse.responseCode = -12;
         wifiResponse.payload = (char*)String(FPSTR(JSON_DEFAULT)).c_str();
-        break;
+        return wifiResponse;
       }
       delay(250);
       Serial.print(F("."));
@@ -163,7 +169,7 @@ CommandResponse initWifiConnection(){
     wifiResponse.responseCode = 1;
     wifiResponse.payload = (char*)String(FPSTR(JSON_DEFAULT)).c_str();
   } else {
-    Serial.println(F("WiFi connexion informations are not set."));
+    Serial.println(F("WiFi connection informations are not set."));
     wifiResponse.responseCode = -12;
     wifiResponse.payload = (char*)String(FPSTR(JSON_DEFAULT)).c_str();
   }
@@ -261,13 +267,13 @@ void commandManagement(JSONVar commandMessage){
       unsigned long tmp = (unsigned long) data[String(FPSTR(MSG_ENUM_MODULE_TIMEOUT))];
       if(tmp > 10000){
         // net_module_timeout has to be > 10 000 ms (default 60 000)
-        //          => Wifi connexion timeout is net_module_timeout (default 60 000)
-        //          => HTTP request timeout is 1:10 of net_module_timeout (default 6 000)
+        //          => Wifi connection timeout is net_module_timeout (default 60 000)
+        //          => HTTP request timeout is 1:5 of net_module_timeout (default 12 000)
         timeoutBase = tmp;
       }
     }
-    connexionSSID = login;
-    connexionPSWRD = password;
+    connectionSSID = login;
+    connectionPSWRD = password;
     response = initWifiConnection();
   } else {
     response.responseCode = -13;
@@ -295,7 +301,7 @@ CommandResponse httpGETRequest(String contactPath, const char* authLogin, const 
   WiFiClient client;
   HTTPClient http;
 
-  http.setTimeout((unsigned long)(timeoutBase/10));
+  http.setTimeout((unsigned long)(timeoutBase/5));
 
   // add DEVICE_ID
   if(mustSendID){
@@ -351,7 +357,7 @@ CommandResponse httpsGETRequest(String contactPath, bool isSecure, const char* a
   WiFiClientSecure client;
   HTTPClient http;
 
-  http.setTimeout((unsigned long)(timeoutBase/10));
+  http.setTimeout((unsigned long)(timeoutBase/5));
 
   // add DEVICE_ID
   if(mustSendID){
@@ -412,7 +418,7 @@ CommandResponse httpPOSTRequest(String contactPath, const char* authLogin, const
   WiFiClient client;
   HTTPClient http;
 
-  http.setTimeout((unsigned long)(timeoutBase/10));
+  http.setTimeout((unsigned long)(timeoutBase/5));
 
   //add DEVICE_ID
   (*objectToSend)[String(FPSTR(JSON_DEVICE))] = String(FPSTR(DEVICE_ID)).c_str();
@@ -461,7 +467,7 @@ CommandResponse httpsPOSTRequest(String contactPath, bool isSecure, const char* 
   WiFiClientSecure client;
   HTTPClient http;
 
-  http.setTimeout((unsigned long)(timeoutBase/10));
+  http.setTimeout((unsigned long)(timeoutBase/5));
 
   //add DEVICE_ID
   (*objectToSend)[String(FPSTR(JSON_DEVICE))] = String(FPSTR(DEVICE_ID)).c_str();
